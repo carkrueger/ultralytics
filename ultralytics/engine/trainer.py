@@ -616,14 +616,19 @@ class BaseTrainer:
                 # Log
                 if RANK in {-1, 0}:
                     loss_length = len(self.tloss)
+                    instances = batch.get("cls", batch["img"]).shape[0]  # no. of instances
+                    imgsz = batch["img"].shape[-1]  # imgsz, i.e 640
+                    # Formatted only when the bar redraws: each loss value is a device-to-host sync
                     pbar.set_description(
-                        ("%11s" * 2 + "%11.4g" * (2 + loss_length))
-                        % (
-                            f"{epoch + 1}/{self.epochs}",
-                            f"{self._get_memory():.3g}G",  # (GB) GPU memory util
-                            *self.tloss.values(),  # losses
-                            batch.get("cls", batch["img"]).shape[0],  # no. of instances
-                            batch["img"].shape[-1],  # imgsz, i.e 640
+                        lambda e=epoch, n=loss_length, inst=instances, sz=imgsz: (
+                            ("%11s" * 2 + "%11.4g" * (2 + n))
+                            % (
+                                f"{e + 1}/{self.epochs}",
+                                f"{self._get_memory():.3g}G",  # (GB) GPU memory util
+                                *self.tloss.values(),  # losses
+                                inst,
+                                sz,
+                            )
                         )
                     )
                     if self.args.plots and ni in self.plot_idx:

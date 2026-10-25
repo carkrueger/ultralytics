@@ -8,7 +8,7 @@ import sys
 import time
 import unicodedata
 from functools import lru_cache
-from typing import IO, Any
+from typing import IO, Any, Callable
 
 from typing_extensions import Self
 
@@ -295,14 +295,15 @@ class TQDM:
 
         # Write to output, fitting real terminals only so redirected logs keep full lines
         try:
-            progress_str = f"{self.desc}: {fields}"
+            desc = self.desc() if callable(self.desc) else self.desc
+            progress_str = f"{desc}: {fields}"
             if self.file.isatty() and "JPY_PARENT_PID" not in os.environ:  # a notebook pane scrolls, never fit it
                 try:  # measure self.file's own terminal, not sys.__stdout__
                     width = os.get_terminal_size(self.file.fileno()).columns - 1
                 except Exception:  # streams without a usable fileno (io.StringIO, wrapped stdout)
                     width = shutil.get_terminal_size().columns - 1  # COLUMNS env, else sys.__stdout__
                 if width > 0:  # a pty opened without a winsize reports 0 columns, so there is no width to fit to
-                    progress_str = self._fit(f"{self._fit(self.desc, width - len(fields) - 2)}: {fields}", width)
+                    progress_str = self._fit(f"{self._fit(desc, width - len(fields) - 2)}: {fields}", width)
             # Non-interactive environments avoid the carriage return which creates empty lines
             frame = progress_str if self.noninteractive else f"\r\033[K{progress_str}"
             if progress := getattr(self.file, "progress", None):
@@ -319,8 +320,8 @@ class TQDM:
             self.n += n
             self._display()
 
-    def set_description(self, desc: str | None) -> None:
-        """Set description."""
+    def set_description(self, desc: str | Callable[[], str] | None) -> None:
+        """Set description; a callable is only evaluated when the bar is actually drawn."""
         self.desc = desc or ""
         if not self.disable:
             self._display()
@@ -329,7 +330,8 @@ class TQDM:
         """Set postfix (appends to description)."""
         if kwargs:
             postfix = ", ".join(f"{k}={v}" for k, v in kwargs.items())
-            base_desc = self.desc.split(" | ")[0] if " | " in self.desc else self.desc
+            desc = self.desc() if callable(self.desc) else self.desc
+            base_desc = desc.split(" | ")[0] if " | " in desc else desc
             self.set_description(f"{base_desc} | {postfix}")
 
     def close(self) -> None:

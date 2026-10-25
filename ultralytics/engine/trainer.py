@@ -1236,8 +1236,13 @@ class BaseTrainer:
             g = g_
         # fused=True must go to the constructor: that is where Adam registers _step_supports_amp_scaling, which lets
         # GradScaler pass found_inf to the kernel instead of reading it back on the host
-        fused = {"fused": True} if name in {"Adam", "AdamW"} and TORCH_2_0 and next(model.parameters()).is_cuda else {}
-        optimizer = (partial(MuSGD, muon=muon, sgd=sgd) if use_muon else getattr(optim, name))(params=g, **fused)
+        device = next(model.parameters()).device.type
+        fused = {"fused": True} if name in {"Adam", "AdamW"} and TORCH_2_0 and device in {"cuda", "xpu"} else {}
+        builder = partial(MuSGD, muon=muon, sgd=sgd) if use_muon else getattr(optim, name)
+        try:
+            optimizer = builder(params=g, **fused)
+        except RuntimeError:  # torch builds without a fused XPU kernel reject fused=True
+            optimizer = builder(params=g)
 
         LOGGER.info(
             f"{colorstr('optimizer:')} {type(optimizer).__name__}(lr={lr}, momentum={momentum}) with parameter groups "
